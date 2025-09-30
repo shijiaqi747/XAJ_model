@@ -8,7 +8,7 @@
 
 
 #figure(
-  image("./三水源新安江模型结构及计算层次.jpg", width: 120%),
+  image("images/三水源新安江模型结构及计算层次.jpg", width: 120%),
   caption: [新安江模型结构及计算层次]
 ) <fig_1>
 
@@ -33,6 +33,6 @@ EP ：蒸散发能力\
 三层蒸发模式按照先上层，后下层的次序，分以下几种情况：\
 ① 若 P+ W U ≥ EP ，则 EU =EP,EL = 0 ,ED=0
 #figure(
-  image("./蒸发.jpg", width: 80%),
+  image("images/蒸发.jpg", width: 80%),
   caption: [Es/Ep与θ的关系，Es：土壤蒸发量，Ep：流域蒸发能力]
 ) <fig_2>

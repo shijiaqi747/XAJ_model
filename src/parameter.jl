@@ -68,16 +68,16 @@ end
 
 # 输出结构体
 @with_kw mutable struct OutputXAJ{FT<:Real}
-    ntime::Int
-    states::Vector{StateXAJ{FT}}
-    R_sim::Vector{FT}
+  ntime::Int
+  states::Vector{StateXAJ{FT}}
+  R_sim::Vector{FT}
 end
 
 # 构造函数，根据 ntime 初始化
 function Output(model::XAJ{FT}; ntime::Int) where {FT<:Real}
-    OutputXAJ{FT}(
-        ntime,
-        [StateXAJ{FT}() for i in 1:ntime],  # 初始化每个时间步的状态
-        zeros(FT, ntime)                     # 初始化 R_sim 为零
-    )
+  OutputXAJ{FT}(
+    ntime,
+    [StateXAJ{FT}() for i in 1:ntime],  # 初始化每个时间步的状态
+    zeros(FT, ntime)                     # 初始化 R_sim 为零
+  )
 end

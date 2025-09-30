@@ -8,8 +8,6 @@ Inputs:
 Return:
 - Q :: Vector{T}   出流序列
 """
-
-
 function linear_reservoir(I::AbstractVector{T}; K::Real, dt::Real=1.0) where {T<:Real}
     ntime = length(I)
     Q = zeros(T, ntime)
