@@ -1,12 +1,13 @@
+using UnPack
 # 三层蒸发模型
-function cal_evaporation!(   
-    P::FT,   # 降雨量，mm
-    PET::FT,  # 潜在蒸散发，mm
-    state::StateXAJ{FT},
-    model::XAJ{FT}
-) where {FT}
-      (; WU, WL, WD) = state
-      (; K, C, WLM) = model
+function cal_evaporation!(
+    P::T,   # 降雨量，mm
+    PET::T,  # 潜在蒸散发，mm
+    state::StateXAJ{T},
+    model::XAJ{T}
+) where {T<:Real}
+    (; WU, WL, WD) = state
+    (; K, C, WLM) = model
 
     # 蒸发能力
     PET = PET * K
@@ -31,19 +32,20 @@ function cal_evaporation!(
     EU = min(EU, WU + P)
     EL = min(EL, WL)
     ED = min(ED, WD)
-
+    
     # 总蒸发
     ET = EU + EL + ED
-
-   @pack! state = ET, EU, EL, ED, PE
+ 
+    PE = P - ET
+    @pack! state = ET, EU, EL, ED, PE
 end
 
 
 # 产流计算
 function cal_runoff!(
-    state::StateXAJ{FT},
-    model::XAJ{FT}
-) where {FT}
+    state::StateXAJ{T},
+    model::XAJ{T}
+) where {T<:Real}
 
     (; IM, WUM, WLM, WDM, B) = model
     (; PE, W) = state
@@ -59,18 +61,18 @@ function cal_runoff!(
 
         # 流域总储水量
         WM = WUM + WLM + WDM
-        WMM = WM * (1 + B)  
+        WMM = WM * (1 + B)
 
         # 当前平均含水量比例
-        θ = clamp(W / WM, 0.0, 1.0 - eps(FT))  # 控制 θ 在 [0,1) 内
-        a = WMM * (1 - (1 - θ)^(1 / (1 + B)))  
+        θ = clamp(W / WM, 0.0, 1.0 - eps(T))  # 控制 θ 在 [0,1) 内
+        a = WMM * (1 - (1 - θ)^(1 / (1 + B)))
 
         # 产流计算
         if PE + a < WMM
             term = (1 - (PE + a) / WMM)^(B + 1)
-            R = PE - (WM - W) + WM * (1 - term)  
+            R = PE - (WM - W) + WM * (1 - term)
         else
-            R = PE - (WM - W)  
+            R = PE - (WM - W)
         end
 
         R = max(0.0, R)
@@ -84,7 +86,7 @@ function cal_runoff!(
 end
 
 #水储量更新
-function update_W!(state::StateXAJ{FT}, model::XAJ{FT}) where {FT}
+function update_W!(state::StateXAJ{T}, model::XAJ{T}) where {T<:Real}
     (; WUM, WLM, WDM) = model
     (; WU, WL, WD, PE, R, EU, EL, ED) = state
 
@@ -109,7 +111,7 @@ function update_W!(state::StateXAJ{FT}, model::XAJ{FT}) where {FT}
     else
         WD = max(WD - ED, 0.0)
     end
-    WD = min(WD, WDM)  
+    WD = min(WD, WDM)
     W = WU + WL + WD
 
     @pack! state = WU, WL, WD, W
@@ -117,41 +119,43 @@ end
 
 
 # 分水源
-function divide_runoff!(state::StateXAJ{FT}, model::XAJ{FT}) where {FT}
-    (; R, PE, FR, S) = state  
+function divide_runoff!(state::StateXAJ{T}, FR1::T, model::XAJ{T}) where {T<:Real}
+    (; R, PE, FR, S, R_IM) = state
     (; SM, EX, KI, KG) = model
 
-    # 初始化 FR 和 S
-    FR = FR == 0.0 ? 0.1 : FR
-    S  = S == 0.0 ? 0.5 * SM : S
+    # 初始化
+    FR = FR == 0.0 ? T(0.1) : FR
+    S = S == 0.0 ? 0.5 * SM : S
 
-    # 产流面积比例
+    RS = RI = RG = T(0)
+
     if PE > 0
-        FR = R / PE
-    end
+        # 产流面积比例
+        FR = clamp(R / PE, T(0), T(1))
 
-    # 自由水储量换算（上一时段相关）
-    SS = S
-    if R > 0 && FR1 > 0
-        SS = FR1 * S / FR
-    end
+        # 自由水储量换算
+        S = S * FR1 / FR
+        S = clamp(S, T(0), SM)
 
-    # 最大自由水容量
-    MS = SM * (1 + EX)
+        # 最大自由水容量
+        MS = SM * (1 + EX)
+        AU = MS * (1 - clamp(1 - S / SM, 0.0, 1.0)^(1 / (1 + EX)))
 
-    # 可用自由水容量
-    AU = MS * (1 - (1 - (SS * FR1) / (FR * SM))^(1 / (1 + EX)))
+        # 地表径流计算
+        if PE + AU < MS
+            RS = FR * (PE + SM * (1 - (PE + AU)/MS)^(EX+1) - SM + S)
+            S = S + (R - RS) / FR
+        else
+            RS = FR * (PE + S - SM)
+            S = SM
+        end
 
-    # 地表径流计算
-    if PE + AU < MS
-        RS = FR * (PE - SM + SS + SM * (1 - (PE + AU) / SM)^(1 + EX))
+        RS = clamp(RS, T(0), R)
     else
-        RS = FR * (PE + SS - SM)
+        # PE <= 0 时的分水源计算
+        WW = clamp(R / (SM * (1 + EX)), 0.0, 1.0)
+        FR = 1 - (1 - WW)^(1 / (1 + EX))
     end
-    RS = min(RS, R)  # 径流不超过总产流 R
-
-    # 更新自由水储量
-    S = min((SS * FR1) / FR + (R - RS) / FR, SM)
 
     # 壤中流和地下水
     RI = KI * S * FR
@@ -160,6 +164,8 @@ function divide_runoff!(state::StateXAJ{FT}, model::XAJ{FT}) where {FT}
     # 更新剩余自由水储量
     S = S * (1 - KI - KG)
 
-    # 保存当前 FR 作为下一时段 FR1
+    # 累加不透水区产流
+    RS =RS + R_IM
+
     @pack! state = FR, RS, RI, RG, S
 end
